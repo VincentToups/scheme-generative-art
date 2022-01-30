@@ -1,0 +1,43 @@
+(library (lib rk4)
+  (export rk4 rk4-step)
+  (import (chezscheme)
+	  (lib vector-shorthand))
+  (begin
+
+    (define-syntax censor
+      (lambda (expr)
+	(syntax-case expr ()
+	  [(_ id)
+	   (identifier? #'id)
+	   #'(if (or (infinite? id) (nan? id)) (set! id 0.0))])))
+    
+    (define (rk4-step f s t dt)
+      (let* ((dt/2 (/ dt 2.0))
+	     (k1/2 (vm (lambda (e) (* (/ dt 2) e)) (f s t)))
+	     (k2/2 (vm (lambda (e) (* (/ dt 2) e)) (f (v+ s k1/2) (+ t dt/2))))
+	     (k3 (vm (lambda (e) (* dt e)) (f (v+ s k2/2) (+ t dt/2))))
+	     (k4 (vm (lambda (e) (* dt e)) (f (v+ s k3) (+ t dt)))))
+	(vector-map (lambda (s k1/2 k2/2 k3 k4)
+		      (censor k1/2)
+		      (censor k2/2)
+		      (censor k3)
+		      (censor k4)
+		      (+ s
+			 (/ k1/2 3.0)
+			 (* 2.0 (/ k2/2 3.0))
+			 (/ k3 3)
+			 (/ k4 6)))
+		    s k1/2 k2/2 k3 k4)))
+
+    (define (rk4 f s t dt dur)
+      (let loop ((state s)
+		 (states (list s))
+		 (time-left dur)
+		 (time t))
+	(cond ((<= time-left 0)
+	       (reverse states))
+	      (else
+	       (let ((new-state (rk4-step f state time dt)))
+		 (loop new-state (cons new-state states)
+		       (- time-left dt)
+		       (+ time dt)))))))))
